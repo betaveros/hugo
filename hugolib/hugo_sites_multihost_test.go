@@ -14,6 +14,7 @@ func TestMultihosts(t *testing.T) {
 paginate = 1
 disablePathToLower = true
 defaultContentLanguage = "{{ .DefaultContentLanguage }}"
+defaultContentLanguageInSubdir = {{ .DefaultContentLanguageInSubdir }}
 
 [permalinks]
 other = "/somewhere/else/:filename"
@@ -42,7 +43,7 @@ languageName = "Nynorsk"
 
 `
 
-	siteConfig := testSiteConfig{Fs: afero.NewMemMapFs(), DefaultContentLanguage: "fr", DefaultContentLanguageInSubdir: true}
+	siteConfig := testSiteConfig{Fs: afero.NewMemMapFs(), DefaultContentLanguage: "fr", DefaultContentLanguageInSubdir: false}
 	sites := createMultiTestSites(t, siteConfig, multiSiteTOMLConfigTemplate)
 	fs := sites.Fs
 	cfg := BuildCfg{Watching: true}
@@ -53,10 +54,16 @@ languageName = "Nynorsk"
 	assert.NoError(err)
 
 	th.assertFileContent("public/en/sect/doc1-slug/index.html", "Hello")
-	enSite := sites.Sites[0]
-	enSiteHome := enSite.getPage(KindHome)
-	assert.True(enSiteHome.IsTranslated())
-	assert.Len(enSiteHome.Translations(), 2)
-	assert.Equal("https://example.com/", enSiteHome.Permalink())
+
+	s1 := sites.Sites[0]
+
+	s2 := sites.Sites[1]
+	s2h := s2.getPage(KindHome)
+	assert.Equal("https://example.fr/", s2h.Permalink())
+
+	s1h := s1.getPage(KindHome)
+	assert.True(s1h.IsTranslated())
+	assert.Len(s1h.Translations(), 2)
+	assert.Equal("https://example.com/", s1h.Permalink())
 
 }

@@ -40,6 +40,8 @@ func TestPageTargetPath(t *testing.T) {
 		BaseName:  "_redirects",
 	}
 
+	// TODO(bep) multihost add test cases
+
 	for _, langPrefix := range []string{"", "no"} {
 		for _, uglyURLs := range []bool{false, true} {
 			t.Run(fmt.Sprintf("langPrefix=%q,uglyURLs=%t", langPrefix, uglyURLs),

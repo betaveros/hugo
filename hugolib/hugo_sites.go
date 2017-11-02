@@ -92,6 +92,27 @@ func newHugoSites(cfg deps.DepsCfg, sites ...*Site) (*HugoSites, error) {
 
 	h.Deps = sites[0].Deps
 
+	// The baseURL may be provided at the language level. If that is true,
+	// then every language must have a baseURL. In this case we always render
+	// to a language sub folder, which is then stripped from all the Permalink URLs etc.
+	var baseURLFromLang bool
+
+	for _, s := range sites {
+		burl := s.Language.GetString("baseURL")
+		if baseURLFromLang && burl == "" {
+			return h, errors.New("baseURL must be set on all or none of the languages")
+		}
+
+		if burl != "" {
+			baseURLFromLang = true
+		}
+	}
+
+	if baseURLFromLang {
+		h.Deps.Cfg.Set("defaultContentLanguageInSubdir", true)
+		h.Deps.Cfg.Set("enableMultihost", true)
+	}
+
 	return h, nil
 }
 

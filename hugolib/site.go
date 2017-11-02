@@ -382,6 +382,7 @@ type SiteInfo struct {
 	LanguagePrefix                 string
 	Languages                      helpers.Languages
 	defaultContentLanguageInSubdir bool
+	enableMultihost                bool
 	sectionPagesMenu               string
 }
 
@@ -1010,6 +1011,7 @@ func (s *Site) initializeSiteInfo() {
 	}
 
 	defaultContentInSubDir := s.Cfg.GetBool("defaultContentLanguageInSubdir")
+	enableMultihost := s.Cfg.GetBool("enableMultihost")
 	defaultContentLanguage := s.Cfg.GetString("defaultContentLanguage")
 
 	languagePrefix := ""
@@ -1034,6 +1036,7 @@ func (s *Site) initializeSiteInfo() {
 		LanguagePrefix:                 languagePrefix,
 		Languages:                      languages,
 		defaultContentLanguageInSubdir: defaultContentInSubDir,
+		enableMultihost:                enableMultihost,
 		sectionPagesMenu:               lang.GetString("sectionPagesMenu"),
 		GoogleAnalytics:                lang.GetString("googleAnalytics"),
 		BuildDrafts:                    s.Cfg.GetBool("buildDrafts"),
