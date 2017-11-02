@@ -246,6 +246,11 @@ func (p *Page) createRelativePermalinkForOutputFormat(f output.Format) string {
 		tp = strings.TrimSuffix(tp, f.BaseFilename())
 	}
 
+	// TODO(bep) multihost move this flag to Site?
+	if p.s.Info.enableMultihost {
+		tp = strings.TrimPrefix(tp, helpers.FilePathSeparator+p.s.Info.Language.Lang)
+	}
+
 	return p.s.PathSpec.URLizeFilename(tp)
 }
 
