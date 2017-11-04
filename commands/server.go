@@ -19,12 +19,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gohugoio/hugo/config"
+
 	"github.com/gohugoio/hugo/helpers"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
@@ -208,12 +210,126 @@ func server(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	c.serve(serverPort)
-
 	return nil
 }
 
+type fileServer struct {
+	basePort int
+	baseURLs []string
+	roots    []string
+	c        *commandeer
+}
+
+func (f *fileServer) createEndpoint(i int) (*http.ServeMux, string, error) {
+	baseURL := f.baseURLs[i]
+	root := f.roots[i]
+	port := f.basePort + i
+
+	publishDir := f.c.Cfg.GetString("publishDir")
+
+	if root != "" {
+		publishDir = filepath.Join(publishDir, root)
+	}
+
+	absPublishDir := f.c.PathSpec().AbsPathify(publishDir)
+
+	// TODO(bep) multihost unify feedback
+	if renderToDisk {
+		jww.FEEDBACK.Println("Serving pages from " + absPublishDir)
+	} else {
+		jww.FEEDBACK.Println("Serving pages from memory")
+	}
+
+	httpFs := afero.NewHttpFs(f.c.Fs.Destination)
+	fs := filesOnlyFs{httpFs.Dir(absPublishDir)}
+
+	doLiveReload := !buildWatch && !f.c.Cfg.GetBool("disableLiveReload")
+	fastRenderMode := doLiveReload && !f.c.Cfg.GetBool("disableFastRender")
+
+	if fastRenderMode {
+		jww.FEEDBACK.Println("Running in Fast Render Mode. For full rebuilds on change: hugo server --disableFastRender")
+	}
+
+	// We're only interested in the path
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("Invalid baseURL: %s", err)
+	}
+
+	decorate := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if noHTTPCache {
+				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+				w.Header().Set("Pragma", "no-cache")
+			}
+
+			if fastRenderMode {
+				p := r.RequestURI
+				if strings.HasSuffix(p, "/") || strings.HasSuffix(p, "html") || strings.HasSuffix(p, "htm") {
+					f.c.visitedURLs.Add(p)
+				}
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+
+	fileserver := decorate(http.FileServer(fs))
+	mu := http.NewServeMux()
+
+	if u.Path == "" || u.Path == "/" {
+		mu.Handle("/", fileserver)
+	} else {
+		mu.Handle(u.Path, http.StripPrefix(u.Path, fileserver))
+	}
+
+	endpoint := net.JoinHostPort(serverInterface, strconv.Itoa(port))
+
+	return mu, endpoint, nil
+}
+
 func (c *commandeer) serve(port int) {
+	isMultiHost := Hugo.Deps.Cfg.GetBool("enableMultihost")
+
+	var (
+		baseURLs []string
+		roots    []string
+	)
+
+	if isMultiHost {
+		for _, s := range Hugo.Sites {
+			baseURLs = append(baseURLs, s.BaseURL.String())
+			roots = append(roots, s.Language.Lang)
+		}
+	} else {
+		baseURLs = []string{Hugo.Sites[0].BaseURL.String()}
+		roots = []string{""}
+	}
+
+	srv := &fileServer{
+		basePort: port,
+		baseURLs: baseURLs,
+		roots:    roots,
+		c:        c,
+	}
+
+	for i, _ := range baseURLs {
+		mu, endpoint, err := srv.createEndpoint(i)
+
+		go func() {
+			err = http.ListenAndServe(endpoint, mu)
+			if err != nil {
+				jww.ERROR.Printf("Error: %s\n", err.Error())
+				os.Exit(1)
+			}
+		}()
+	}
+
+	// TODO(bep) multihost		jww.FEEDBACK.Printf("Web Server is available at %s (bind address %s)\n", u.String(), serverInterface)
+	jww.FEEDBACK.Println("Press Ctrl+C to stop")
+}
+
+// TODO(bep) multihost remove
+func (c *commandeer) _serve(port int) {
 	if renderToDisk {
 		jww.FEEDBACK.Println("Serving pages from " + c.PathSpec().AbsPathify(c.Cfg.GetString("publishDir")))
 	} else {
