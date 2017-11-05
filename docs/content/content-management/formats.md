@@ -6,7 +6,7 @@ date: 2017-01-10
 publishdate: 2017-01-10
 lastmod: 2017-04-06
 categories: [content management]
-keywords: [markdown,asciidoc,mmark,content format]
+keywords: [markdown,asciidoc,mmark,pandoc,content format]
 menu:
   docs:
     parent: "content-management"
@@ -195,11 +195,32 @@ With this setup, everything is in place for a natural usage of MathJax on pages 
 
 ## Additional Formats Through External Helpers
 
-Hugo has new concept called _external helpers_. It means that you can write your content using [Asciidoc][ascii], [reStructuredText][rest]. If you have files with associated extensions, Hugo will call external commands to generate the content. ([See the Hugo source code for external helpers][helperssource].)
+Hugo has a new concept called _external helpers_. It means that you can write your content using [Asciidoc][ascii], [reStructuredText][rest], or [pandoc]. If you have files with associated extensions, Hugo will call external commands to generate the content. ([See the Hugo source code for external helpers][helperssource].)
 
 For example, for Asciidoc files, Hugo will try to call the `asciidoctor` or `asciidoc` command. This means that you will have to install the associated tool on your machine to be able to use these formats. ([See the Asciidoctor docs for installation instructions](http://asciidoctor.org/docs/install-toolchain/)).
 
 To use these formats, just use the standard extension and the front matter exactly as you would do with natively supported `.md` files.
+
+Hugo attempts to pass reasonable default arguments to these external helpers by default:
+
+- `asciidoc`: `--no-header-footer --safe -`
+- `asciidoctor`: `--no-header-footer --safe --trace -`
+- `rst2html`: `--leave-comments --initial-header-level=2`
+- `pandoc`: (none)
+
+You can override these arguments by adding entries under the `externalHelperArguments` variable in your [site configuration][config]. For example, if you wanted to use `pandoc` to render your markup with the flag `--strip-comments`, you might put the following in `config.toml`:
+
+```
+[externalHelperArguments]
+  pandoc: --strip-comments
+```
+
+Or in `config.yaml`:
+
+```
+externalHelperArguments:
+  pandoc: --strip-comments
+```
 
 {{% warning "Performance of External Helpers" %}}
 Because additional formats are external commands generation performance will rely heavily on the performance of the external tool you are using. As this feature is still in its infancy, feedback is welcome.
@@ -235,6 +256,7 @@ Markdown syntax is simple enough to learn in a single sitting. The following are
 [mmark]: https://github.com/miekg/mmark
 [mmarkgh]: https://github.com/miekg/mmark/wiki/Syntax
 [org]: http://orgmode.org/
+[pandoc]: http://www.pandoc.org/
 [Pygments]: http://pygments.org/
 [rest]: http://docutils.sourceforge.net/rst.html
 [sc]: /content-management/shortcodes/
