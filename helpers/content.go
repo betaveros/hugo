@@ -46,6 +46,10 @@ type ContentSpec struct {
 	footnoteReturnLinkContents string
 	// SummaryLength is the length of the summary that Hugo extracts from a content.
 	summaryLength int
+	// map of format to args that should be passed to the external helper,
+	// as either a string parsed as a list of whitespace-separated tokens
+	// or as list of strings
+	externalHelperArguments map[string]interface{}
 
 	Highlight            func(code, lang, optsStr string) (string, error)
 	defatultPygmentsOpts map[string]string
@@ -61,6 +65,7 @@ func NewContentSpec(cfg config.Provider) (*ContentSpec, error) {
 		footnoteAnchorPrefix:       cfg.GetString("footnoteAnchorPrefix"),
 		footnoteReturnLinkContents: cfg.GetString("footnoteReturnLinkContents"),
 		summaryLength:              cfg.GetInt("summaryLength"),
+		externalHelperArguments:    cfg.GetStringMap("externalHelperArguments"),
 
 		cfg: cfg,
 	}
@@ -439,6 +444,23 @@ type RenderingContext struct {
 	Cfg          config.Provider
 }
 
+func (c ContentSpec) getExternalHelperArguments(fmt string) []string {
+	args := c.externalHelperArguments[fmt]
+	if args == nil {
+		return nil
+	}
+	switch args := args.(type) {
+	case []string:
+		return args
+	case string:
+		return strings.Fields(args)
+	default:
+		jww.ERROR.Printf("Could not understand external helper arguments %v", args)
+		jww.ERROR.Println("Falling back to default arguments")
+		return nil
+	}
+}
+
 // RenderBytes renders a []byte.
 func (c ContentSpec) RenderBytes(ctx *RenderingContext) []byte {
 	switch ctx.PageFmt {
@@ -447,13 +469,15 @@ func (c ContentSpec) RenderBytes(ctx *RenderingContext) []byte {
 	case "markdown":
 		return c.markdownRender(ctx)
 	case "asciidoc":
-		return getAsciidocContent(ctx)
+		return getAsciidocContent(ctx, c.getExternalHelperArguments("asciidoc"))
 	case "mmark":
 		return c.mmarkRender(ctx)
 	case "rst":
-		return getRstContent(ctx)
+		return getRstContent(ctx, c.getExternalHelperArguments("rst"))
 	case "org":
 		return orgRender(ctx, c)
+	case "pandoc":
+		return getPandocContent(ctx, c.getExternalHelperArguments("pandoc"))
 	}
 }
 
@@ -578,11 +602,6 @@ func getAsciidocExecPath() string {
 	return path
 }
 
-// HasAsciidoc returns whether Asciidoc is installed on this computer.
-func HasAsciidoc() bool {
-	return getAsciidocExecPath() != ""
-}
-
 func getAsciidoctorExecPath() string {
 	path, err := exec.LookPath("asciidoctor")
 	if err != nil {
@@ -591,17 +610,15 @@ func getAsciidoctorExecPath() string {
 	return path
 }
 
-// HasAsciidoctor returns whether Asciidoctor is installed on this computer.
-func HasAsciidoctor() bool {
-	return getAsciidoctorExecPath() != ""
+// HasAsciidoc returns whether Asciidoc or Asciidoctor is installed on this computer.
+func HasAsciidoc() bool {
+	return (getAsciidoctorExecPath() != "" ||
+		getAsciidocExecPath() != "")
 }
 
 // getAsciidocContent calls asciidoctor or asciidoc as an external helper
 // to convert AsciiDoc content to HTML.
-func getAsciidocContent(ctx *RenderingContext) []byte {
-	content := ctx.Content
-	cleanContent := bytes.Replace(content, SummaryDivider, []byte(""), 1)
-
+func getAsciidocContent(ctx *RenderingContext, args []string) []byte {
 	var isAsciidoctor bool
 	path := getAsciidoctorExecPath()
 	if path == "" {
@@ -609,38 +626,22 @@ func getAsciidocContent(ctx *RenderingContext) []byte {
 		if path == "" {
 			jww.ERROR.Println("asciidoctor / asciidoc not found in $PATH: Please install.\n",
 				"                 Leaving AsciiDoc content unrendered.")
-			return content
+			return ctx.Content
 		}
 	} else {
 		isAsciidoctor = true
 	}
 
 	jww.INFO.Println("Rendering", ctx.DocumentName, "with", path, "...")
-	args := []string{"--no-header-footer", "--safe"}
-	if isAsciidoctor {
-		// asciidoctor-specific arg to show stack traces on errors
-		args = append(args, "--trace")
-	}
-	args = append(args, "-")
-	cmd := exec.Command(path, args...)
-	cmd.Stdin = bytes.NewReader(cleanContent)
-	var out, cmderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &cmderr
-	err := cmd.Run()
-	// asciidoctor has exit code 0 even if there are errors in stderr
-	// -> log stderr output regardless of state of err
-	for _, item := range strings.Split(string(cmderr.Bytes()), "\n") {
-		item := strings.TrimSpace(item)
-		if item != "" {
-			jww.ERROR.Println(strings.Replace(item, "<stdin>", ctx.DocumentName, 1))
+	if args == nil {
+		args = []string{"--no-header-footer", "--safe"}
+		if isAsciidoctor {
+			// asciidoctor-specific arg to show stack traces on errors
+			args = append(args, "--trace")
 		}
+		args = append(args, "-")
 	}
-	if err != nil {
-		jww.ERROR.Printf("%s rendering %s: %v", path, ctx.DocumentName, err)
-	}
-
-	return normalizeExternalHelperLineFeeds(out.Bytes())
+	return externallyRenderContent(ctx, path, args)
 }
 
 // HasRst returns whether rst2html is installed on this computer.
@@ -672,41 +673,23 @@ func getPythonExecPath() string {
 
 // getRstContent calls the Python script rst2html as an external helper
 // to convert reStructuredText content to HTML.
-func getRstContent(ctx *RenderingContext) []byte {
-	content := ctx.Content
-	cleanContent := bytes.Replace(content, SummaryDivider, []byte(""), 1)
-
+func getRstContent(ctx *RenderingContext, args []string) []byte {
 	python := getPythonExecPath()
 	path := getRstExecPath()
 
 	if path == "" {
 		jww.ERROR.Println("rst2html / rst2html.py not found in $PATH: Please install.\n",
 			"                 Leaving reStructuredText content unrendered.")
-		return content
+		return ctx.Content
 
 	}
-
 	jww.INFO.Println("Rendering", ctx.DocumentName, "with", path, "...")
-	cmd := exec.Command(python, path, "--leave-comments", "--initial-header-level=2")
-	cmd.Stdin = bytes.NewReader(cleanContent)
-	var out, cmderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &cmderr
-	err := cmd.Run()
-	// By default rst2html exits w/ non-zero exit code only if severe, i.e.
-	// halting errors occurred. -> log stderr output regardless of state of err
-	for _, item := range strings.Split(string(cmderr.Bytes()), "\n") {
-		item := strings.TrimSpace(item)
-		if item != "" {
-			jww.ERROR.Println(strings.Replace(item, "<stdin>", ctx.DocumentName, 1))
-		}
+	if args == nil {
+		args = []string{path, "--leave-comments", "--initial-header-level=2"}
+	} else {
+		args = append([]string{path}, args...)
 	}
-	if err != nil {
-		jww.ERROR.Printf("%s rendering %s: %v", path, ctx.DocumentName, err)
-	}
-
-	result := normalizeExternalHelperLineFeeds(out.Bytes())
-
+	result := externallyRenderContent(ctx, python, args)
 	// TODO(bep) check if rst2html has a body only option.
 	bodyStart := bytes.Index(result, []byte("<body>\n"))
 	if bodyStart < 0 {
@@ -724,9 +707,48 @@ func getRstContent(ctx *RenderingContext) []byte {
 	return result[bodyStart+7 : bodyEnd]
 }
 
+// getPandocContent calls pandoc as an external helper to convert pandoc markdown to HTML.
+func getPandocContent(ctx *RenderingContext, args []string) []byte {
+	content := ctx.Content
+	path, err := exec.LookPath("pandoc")
+	if err != nil {
+		jww.ERROR.Println("pandoc not found in $PATH: Please install.\n",
+			"                 Leaving pandoc content unrendered.")
+		return content
+	}
+	// the default args we want to pass to pandoc are already empty, so we
+	// don't need to check for args == nil
+	return externallyRenderContent(ctx, path, args)
+}
+
 func orgRender(ctx *RenderingContext, c ContentSpec) []byte {
 	content := ctx.Content
 	cleanContent := bytes.Replace(content, []byte("# more"), []byte(""), 1)
 	return goorgeous.Org(cleanContent,
 		c.getHTMLRenderer(blackfriday.HTML_TOC, ctx))
+}
+
+func externallyRenderContent(ctx *RenderingContext, path string, args []string) []byte {
+	content := ctx.Content
+	cleanContent := bytes.Replace(content, SummaryDivider, []byte(""), 1)
+
+	cmd := exec.Command(path, args...)
+	cmd.Stdin = bytes.NewReader(cleanContent)
+	var out, cmderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &cmderr
+	err := cmd.Run()
+	// Most external helpers exit w/ non-zero exit code only if severe, i.e.
+	// halting errors occurred. -> log stderr output regardless of state of err
+	for _, item := range strings.Split(string(cmderr.Bytes()), "\n") {
+		item := strings.TrimSpace(item)
+		if item != "" {
+			jww.ERROR.Printf("%s: %s", ctx.DocumentName, item)
+		}
+	}
+	if err != nil {
+		jww.ERROR.Printf("%s rendering %s: %v", path, ctx.DocumentName, err)
+	}
+
+	return normalizeExternalHelperLineFeeds(out.Bytes())
 }
