@@ -243,6 +243,15 @@ func (c *commandeer) serve(port int) {
 					c.visitedURLs.Add(p)
 				}
 			}
+
+			if c.Cfg.GetBool("trimTrailingSlash") {
+				path := strings.Split(r.URL.Path, "/")
+
+				if !strings.Contains(path[len(path)-1], ".") && !strings.HasSuffix(r.URL.Path, "/") {
+					r.URL.Path += ".html"
+				}
+			}
+
 			h.ServeHTTP(w, r)
 		})
 	}
