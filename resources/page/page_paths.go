@@ -68,6 +68,9 @@ type TargetPathDescriptor struct {
 	// The expanded permalink if defined for the section, ready to use.
 	ExpandedPermalink string
 
+	// Whether to trim the trailing slash from URLs
+	TrimTrailingSlash bool
+
 	// Some types cannot have uglyURLs, even if globally enabled, RSS being one example.
 	UglyURLs bool
 }
@@ -141,7 +144,7 @@ func CreateTargetPaths(d TargetPathDescriptor) (tp TargetPaths) {
 	// the index base even when uglyURLs is enabled.
 	needsBase := true
 
-	isUgly := d.UglyURLs && !d.Type.NoUgly
+	isUgly := (d.UglyURLs || d.TrimTrailingSlash) && !d.Type.NoUgly
 	baseNameSameAsType := d.BaseName != "" && d.BaseName == d.Type.BaseName
 
 	if d.ExpandedPermalink == "" && baseNameSameAsType {
@@ -174,13 +177,21 @@ func CreateTargetPaths(d TargetPathDescriptor) (tp TargetPaths) {
 		hasSlash := strings.HasSuffix(d.URL, slash)
 
 		if hasSlash || !hasDot {
-			pagePath = pjoin(pagePath, d.Type.BaseName+d.Type.MediaType.FullSuffix())
+			if d.TrimTrailingSlash {
+				pagePath += d.Type.MediaType.FullSuffix()
+			} else {
+				pagePath = pjoin(pagePath, d.Type.BaseName+d.Type.MediaType.FullSuffix())
+			}
 		} else if hasDot {
 			pagePathDir = path.Dir(pagePathDir)
 		}
 
 		if !isHtmlIndex(pagePath) {
 			link = pagePath
+
+			if d.TrimTrailingSlash {
+				link = strings.TrimSuffix(link, ".html")
+			}
 		} else if !hasSlash {
 			link += slash
 		}
@@ -239,6 +250,10 @@ func CreateTargetPaths(d TargetPathDescriptor) (tp TargetPaths) {
 
 		if !isHtmlIndex(pagePath) {
 			link = pagePath
+
+			if d.TrimTrailingSlash {
+				link = strings.TrimSuffix(link, ".html")
+			}
 		}
 
 		if d.PrefixFilePath != "" {
@@ -278,6 +293,10 @@ func CreateTargetPaths(d TargetPathDescriptor) (tp TargetPaths) {
 
 		if !isHtmlIndex(pagePath) {
 			link = pagePath
+
+			if d.TrimTrailingSlash {
+				link = strings.TrimSuffix(link, ".html")
+			}
 		} else {
 			link += slash
 		}

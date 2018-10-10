@@ -124,13 +124,14 @@ func createTargetPathDescriptor(s *Site, p page.Page, pm *pageMeta) (page.Target
 	alwaysInSubDir := p.Kind() == kindSitemap
 
 	desc := page.TargetPathDescriptor{
-		PathSpec:    d.PathSpec,
-		Kind:        p.Kind(),
-		Sections:    p.SectionsEntries(),
-		UglyURLs:    s.Info.uglyURLs(p),
-		ForcePrefix: s.h.IsMultihost() || alwaysInSubDir,
-		Dir:         dir,
-		URL:         pm.urlPaths.URL,
+		PathSpec:          d.PathSpec,
+		Kind:              p.Kind(),
+		Sections:          p.SectionsEntries(),
+		UglyURLs:          s.Info.uglyURLs(p),
+		TrimTrailingSlash: s.Info.trimTrailingSlash,
+		ForcePrefix:       s.h.IsMultihost() || alwaysInSubDir,
+		Dir:               dir,
+		URL:               pm.urlPaths.URL,
 	}
 
 	if pm.Slug() != "" {

@@ -305,14 +305,18 @@ func (p *PathSpec) URLizeAndPrep(in string) string {
 
 // URLPrep applies misc sanitation to the given URL.
 func (p *PathSpec) URLPrep(in string) string {
-	if p.UglyURLs {
+	if p.UglyURLs && !p.TrimTrailingSlash {
 		return Uglify(SanitizeURL(in))
 	}
 	pretty := PrettifyURL(SanitizeURL(in))
 	if path.Ext(pretty) == ".xml" {
 		return pretty
 	}
-	url, err := purell.NormalizeURLString(pretty, purell.FlagAddTrailingSlash)
+	flag := purell.FlagAddTrailingSlash
+	if p.TrimTrailingSlash {
+		flag = purell.FlagRemoveTrailingSlash
+	}
+	url, err := purell.NormalizeURLString(pretty, flag)
 	if err != nil {
 		return pretty
 	}

@@ -410,6 +410,14 @@ func (f *fileServer) createEndpoint(i int) (*http.ServeMux, string, string, erro
 				}
 			}
 
+			if f.c.Cfg.GetBool("trimTrailingSlash") {
+				path := strings.Split(r.URL.Path, "/")
+
+				if !strings.Contains(path[len(path)-1], ".") && !strings.HasSuffix(r.URL.Path, "/") {
+					r.URL.Path += ".html"
+				}
+			}
+
 			h.ServeHTTP(w, r)
 		})
 	}

@@ -660,6 +660,8 @@ type SiteInfo struct {
 	relativeURLs bool
 	uglyURLs     func(p page.Page) bool
 
+	trimTrailingSlash bool
+
 	owner                          *HugoSites
 	s                              *Site
 	language                       *langs.Language
@@ -1331,6 +1333,7 @@ func (s *Site) initializeSiteInfo() error {
 		canonifyURLs:                   s.Cfg.GetBool("canonifyURLs"),
 		relativeURLs:                   s.Cfg.GetBool("relativeURLs"),
 		uglyURLs:                       uglyURLs,
+		trimTrailingSlash:              s.Cfg.GetBool("trimTrailingSlash"),
 		permalinks:                     permalinks,
 		owner:                          s.h,
 		s:                              s,
